@@ -7,7 +7,7 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
-type worekDanych struct {
+type consts struct {
 	ScreenWidth         int32
 	ScreenHeight        int32
 	TableHeight         int
@@ -19,7 +19,7 @@ type worekDanych struct {
 }
 
 var (
-	globals = worekDanych{
+	globals = consts{
 		ScreenWidth:         640,
 		ScreenHeight:        480,
 		TableHeight:         380,
