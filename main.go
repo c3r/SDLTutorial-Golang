@@ -2,20 +2,46 @@ package main
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/veandco/go-sdl2/img"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
 type consts struct {
-	ScreenWidth         int32
-	ScreenHeight        int32
-	TableHeight         int
-	TableWidth          int
-	TableMarginLeft     int
-	TableMarginTop      int
-	ServeDirectionRight int
-	ServeDirectionLeft  int
+	ScreenWidth,
+	ScreenHeight,
+	TableHeight,
+	TableWidth,
+	TableMarginLeft,
+	TableMarginTop,
+	ServeDirectionRight,
+	ServeDirectionLeft int32
+}
+
+// type color struct{ r, g, b, a int32 }
+
+type velocity struct{ X, Y float64 }
+
+type texture struct {
+	renderer      *sdl.Renderer
+	texture       *sdl.Texture
+	width, height int32
+}
+
+type ball struct {
+	*sdl.Point
+	stickingPaddle *paddle
+	collider       sdl.Rect
+	velocity       velocity
+}
+
+type paddle struct {
+	*sdl.Point
+	stickingBall           *ball
+	collider               sdl.Rect
+	velocity               velocity
+	points, serveDirection int32
 }
 
 var (
@@ -30,8 +56,19 @@ var (
 		ServeDirectionLeft:  -1}
 )
 
+const (
+	paddleWidth    = 15
+	paddleHeight   = 100
+	paddleVelocity = 3
+	ballWidth      = 20
+	ballHeight     = 20
+	ballVelocity   = 4
+)
+
 var gWindow *sdl.Window
 var gRenderer *sdl.Renderer
+var gLeftPadScore *texture
+var gRightPadScore *texture
 
 var gQuit bool
 
@@ -42,7 +79,6 @@ func initGame() bool {
 		return false
 	}
 
-	// Set texture filtering to linear
 	if !sdl.SetHint(sdl.HINT_RENDER_SCALE_QUALITY, "1") {
 		fmt.Println("Warning: Linear texture filtering not enabled!")
 	}
@@ -59,25 +95,182 @@ func initGame() bool {
 		return false
 	}
 
-	_, err = sdl.CreateRenderer(gWindow, -1, sdl.RENDERER_ACCELERATED)
+	gRenderer, err = sdl.CreateRenderer(gWindow, -1, sdl.RENDERER_ACCELERATED)
 
 	if err != nil {
 		fmt.Printf("Renderer could not be created! SDL Error: %s\n", sdl.GetError())
 		return false
 	}
 
-	// g_lpScore = new LTexture(g_renderer);
-	// g_rpScore = new LTexture(g_renderer);
+	// gLeftPadScore := texture{gRenderer, nil, 0, 0}
+	// gRightPadScore := texture{gRenderer, nil, 0, 0}
 
-	// Initialize PNG loading
-	var flags = img.INIT_JPG | img.INIT_PNG
-	var initted = img.Init(flags)
+	flags := img.INIT_JPG | img.INIT_PNG
+	initted := img.Init(flags)
 	if (initted & flags) != flags {
 		fmt.Printf("SDL_image could not initialize! SDL_image Error: %s\n", img.GetError())
 		return false
 	}
 
 	return true
+}
+
+func handleCollision(ball *ball, paddle *paddle) {
+	// If ball and paddle are coming in the same direction, return.
+	// This prevents of multiple collisions when the paddle is coming
+	// the same way that the ball is after collision.
+	if float64(paddle.serveDirection)*ball.velocity.X > 0 {
+		return
+	}
+
+	ball.velocity.X = math.Abs(ball.velocity.X)
+	ball.velocity.X = float64(paddle.serveDirection)*ball.velocity.X + paddle.velocity.X/1.5
+	ball.velocity.Y = ball.velocity.Y - paddle.velocity.Y/1.25
+}
+
+func colliding(ball *ball, paddle *paddle) bool {
+	if paddle == nil {
+		return false
+	}
+
+	pc := paddle.collider
+	bc := ball.collider
+
+	lb, rb, tb, bb := bc.X, bc.X+bc.W, bc.Y, bc.Y+bc.H
+	lp, rp, tp, bp := pc.X, pc.X+pc.W, pc.Y, pc.Y+pc.H
+
+	return !(bb <= tp || tb >= bp || rb <= lp || lb >= rp)
+}
+
+func moveBall(ball *ball, leftPaddle, rightPaddle *paddle) {
+	// if(stickToPaddle()) return
+	// Move
+	ball.X += int32(ball.velocity.X)
+	ball.Y += int32(ball.velocity.Y)
+
+	ball.collider.X = ball.X
+	ball.collider.Y = ball.Y
+
+	// Check for score
+	// if checkForScore(lp, rp) {
+	// 	return
+	// }
+
+	// Check for collisions
+	if colliding(ball, leftPaddle) {
+		handleCollision(ball, leftPaddle)
+		return
+	}
+
+	if colliding(ball, rightPaddle) {
+		handleCollision(ball, rightPaddle)
+		return
+	}
+}
+
+func renderBall(ball *ball, renderer *sdl.Renderer) {
+	radius := ballWidth / 2
+	renderer.SetDrawColor(0xEE, 0xE0, 0x93, 0xFF)
+
+	center := sdl.Point{
+		X: ball.X + int32(radius),
+		Y: ball.Y + int32(radius)}
+
+	for w := 0; w < radius*2; w++ {
+		for h := 0; h < radius*2; h++ {
+			dx := radius - w
+			dy := radius - h
+			if (dx*dx)+(dy*dy) <= (radius * radius) {
+				renderer.DrawPoint(center.X, center.Y)
+			}
+		}
+	}
+}
+
+func movePaddle(paddle *paddle, tableRect *sdl.Rect) {
+	paddle.X += int32(paddle.X)
+	paddle.collider.X = paddle.X
+
+	mid := (tableRect.X + tableRect.W) / 2
+
+	inMiddle := paddle.X < (mid-paddleWidth-ballWidth) || paddle.X > (mid+ballWidth)
+
+	if (paddle.X < tableRect.X) || !inMiddle || paddle.X+paddleWidth > tableRect.X+tableRect.W {
+		paddle.X -= int32(paddle.velocity.X)
+		paddle.collider.X = paddle.X
+	}
+
+	paddle.Y += int32(paddle.Y)
+	paddle.collider.Y = paddle.Y
+
+	if (paddle.X <= tableRect.Y) || (paddle.Y+paddleHeight > tableRect.Y+tableRect.H) {
+		paddle.Y -= int32(paddle.Y)
+		paddle.collider.Y = paddle.Y
+	}
+}
+
+func renderPaddle(paddle *paddle, renderer *sdl.Renderer) {
+	a := int32(4)
+	r1 := sdl.Rect{
+		X: paddle.collider.X,
+		Y: paddle.collider.Y,
+		W: paddle.collider.W - a,
+		H: paddle.collider.H}
+
+	r2 := sdl.Rect{
+		X: paddle.collider.X + a,
+		Y: paddle.collider.Y,
+		W: paddle.collider.W - 2*a,
+		H: paddle.collider.H}
+
+	r3 := sdl.Rect{
+		X: paddle.collider.X + paddle.collider.W - a,
+		Y: paddle.collider.Y,
+		W: a,
+		H: paddle.collider.H}
+
+	renderer.SetDrawColor(0xFF, 0x00, 0x00, 0xAA)
+	renderer.FillRect(&r1)
+
+	renderer.SetDrawColor(0xCC, 0xA7, 0x53, 0xAA)
+	renderer.FillRect(&r2)
+
+	renderer.SetDrawColor(0xFF, 0x00, 0x00, 0xAA)
+	renderer.FillRect(&r3)
+}
+
+func render(ball *ball, leftPaddle, rightPaddle *paddle, renderer *sdl.Renderer) {
+	renderer.SetDrawColor(0x10, 0x30, 0x60, 0xFF)
+	renderer.Clear()
+
+	renderPaddle(leftPaddle, renderer)
+	renderPaddle(rightPaddle, renderer)
+	renderBall(ball, renderer)
+
+	renderer.Present()
+}
+
+func renderTexture(texture *texture, x, y int32, clip *sdl.Rect, angle float64, center *sdl.Point, flip sdl.RendererFlip) {
+	renderQuad := sdl.Rect{
+		X: x,
+		Y: y,
+		W: texture.width,
+		H: texture.height}
+
+	if clip != nil {
+		renderQuad.W = clip.W
+		renderQuad.H = clip.H
+	}
+	texture.renderer.CopyEx(texture.texture, clip, &renderQuad, angle, center, flip)
+}
+
+func freeTexture(texture *texture) {
+	if texture != nil {
+		texture.texture.Destroy()
+		texture.texture = nil
+		texture.height = 0
+		texture.width = 0
+	}
 }
 
 func close() {
@@ -87,10 +280,34 @@ func close() {
 	sdl.Quit()
 }
 
-func main() {
-	if !initGame() {
-		fmt.Println("Failed to initialize!\n")
+func loadTextureFromFile(texture *texture, path string) bool {
+	loadedSurface, err := img.Load(path)
+	if err != nil {
+		fmt.Printf("Unable to load image %s! SDL_image Error: %s\n", path, img.GetError())
+		return false
 	}
 
-	fmt.Println("Initialized sucessfully!\n")
+	loadedSurface.SetColorKey(true, sdl.MapRGB(loadedSurface.Format, 0, 0xFF, 0xFF))
+
+	newTexture, err := texture.renderer.CreateTextureFromSurface(loadedSurface)
+	if err != nil {
+		fmt.Printf("Unable to create texture from %s! SDL Error: %s\n", path, sdl.GetError())
+		return false
+	}
+
+	texture.width = loadedSurface.W
+	texture.height = loadedSurface.H
+
+	loadedSurface.Free()
+
+	texture.texture = newTexture
+	return texture.texture != newTexture
+}
+
+func main() {
+	if !initGame() {
+		fmt.Println("Failed to initialize!")
+	}
+
+	fmt.Println("Initialized sucessfully!")
 }
