@@ -32,6 +32,7 @@ type ball struct {
 	stickingPaddle *paddle
 	collider       sdl.Rect
 	velocity       velocity
+	tableRect      *sdl.Rect
 }
 
 type paddle struct {
@@ -40,6 +41,7 @@ type paddle struct {
 	collider               sdl.Rect
 	velocity               velocity
 	points, serveDirection int32
+	tableRect              *sdl.Rect
 }
 
 var (
@@ -185,22 +187,22 @@ func (ball *ball) render(renderer *sdl.Renderer) {
 	}
 }
 
-func (paddle *paddle) move(tableRect *sdl.Rect) {
-	paddle.X += int32(paddle.X)
+func (paddle *paddle) move() {
+	paddle.X += int32(paddle.velocity.X)
 	paddle.collider.X = paddle.X
 
-	mid := (tableRect.X + tableRect.W) / 2
+	mid := (paddle.tableRect.X + paddle.tableRect.W) / 2
 	inMiddle := paddle.X < (mid-paddleWidth-ballWidth) || paddle.X > (mid+ballWidth)
 
-	if (paddle.X < tableRect.X) || !inMiddle || paddle.X+paddleWidth > tableRect.X+tableRect.W {
+	if (paddle.X < paddle.tableRect.X) || !inMiddle || paddle.X+paddleWidth > paddle.tableRect.X+paddle.tableRect.W {
 		paddle.X -= int32(paddle.velocity.X)
 		paddle.collider.X = paddle.X
 	}
 
-	paddle.Y += int32(paddle.Y)
+	paddle.Y += int32(paddle.velocity.Y)
 	paddle.collider.Y = paddle.Y
 
-	if (paddle.X <= tableRect.Y) || (paddle.Y+paddleHeight > tableRect.Y+tableRect.H) {
+	if (paddle.Y <= paddle.tableRect.Y) || (paddle.Y+paddleHeight > paddle.tableRect.Y+paddle.tableRect.H) {
 		paddle.Y -= int32(paddle.Y)
 		paddle.collider.Y = paddle.Y
 	}
@@ -245,6 +247,12 @@ func render(ball *ball, leftPaddle, rightPaddle *paddle, renderer *sdl.Renderer)
 	ball.render(renderer)
 
 	renderer.Present()
+}
+
+func update(ball *ball, leftPaddle, rightPaddle *paddle) {
+	ball.move(leftPaddle, rightPaddle)
+	leftPaddle.move()
+	rightPaddle.move()
 }
 
 func (texture *texture) renderTexture(x, y int32, clip *sdl.Rect, angle float64, center *sdl.Point, flip sdl.RendererFlip) {
@@ -306,11 +314,11 @@ func main() {
 		fmt.Println("Failed to initialize!")
 	}
 
-	// tableRect := sdl.Rect{
-	// 	X: globals.TableMarginLeft,
-	// 	Y: globals.TableMarginTop,
-	// 	W: globals.TableWidth,
-	// 	H: globals.TableHeight}
+	tableRect := sdl.Rect{
+		X: globals.TableMarginLeft,
+		Y: globals.TableMarginTop,
+		W: globals.TableWidth,
+		H: globals.TableHeight}
 
 	leftPaddle := paddle{}
 	leftPaddle.X = paddleWidth
@@ -320,10 +328,12 @@ func main() {
 		Y: leftPaddle.Y,
 		W: paddleWidth,
 		H: paddleHeight}
+
 	leftPaddle.points = 0
 	leftPaddle.serveDirection = 1
 	leftPaddle.stickingBall = nil
 	leftPaddle.velocity = velocity{0, 0}
+	leftPaddle.tableRect = &tableRect
 
 	rightPaddle := paddle{}
 	rightPaddle.X = globals.ScreenWidth - 2*paddleWidth
@@ -337,6 +347,7 @@ func main() {
 	rightPaddle.serveDirection = -1
 	rightPaddle.stickingBall = nil
 	rightPaddle.velocity = velocity{0, 0}
+	rightPaddle.tableRect = &tableRect
 
 	ball := ball{}
 	ball.X = globals.ScreenWidth/2 - ballWidth/2
@@ -347,9 +358,14 @@ func main() {
 		W: ballWidth,
 		H: ballHeight}
 	ball.stickingPaddle = nil
-	ball.velocity = velocity{0, 0}
+	ball.velocity = velocity{2, 0}
+	ball.tableRect = &tableRect
 
 	fmt.Println("Initialized sucessfully!")
+
+	ticksPerSecond := 60
+	tickInterval := uint32(1000 / ticksPerSecond)
+	lastUpdateTime := uint32(0)
 
 	for {
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
@@ -359,6 +375,17 @@ func main() {
 			}
 		}
 
+		currentTime := sdl.GetTicks()
+		dt := currentTime - lastUpdateTime
+		timeToSleep := int32(tickInterval - dt)
+
+		if timeToSleep > 0 {
+			sdl.Delay(uint32(timeToSleep))
+		}
+
+		update(&ball, &leftPaddle, &rightPaddle)
 		render(&ball, &leftPaddle, &rightPaddle, gRenderer)
+
+		lastUpdateTime = currentTime
 	}
 }
