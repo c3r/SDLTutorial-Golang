@@ -19,8 +19,6 @@ type consts struct {
 	ServeDirectionLeft int32
 }
 
-// type color struct{ r, g, b, a int32 }
-
 type velocity struct{ X, Y float64 }
 
 type texture struct {
@@ -30,14 +28,14 @@ type texture struct {
 }
 
 type ball struct {
-	*sdl.Point
+	sdl.Point
 	stickingPaddle *paddle
 	collider       sdl.Rect
 	velocity       velocity
 }
 
 type paddle struct {
-	*sdl.Point
+	sdl.Point
 	stickingBall           *ball
 	collider               sdl.Rect
 	velocity               velocity
@@ -115,7 +113,7 @@ func initGame() bool {
 	return true
 }
 
-func handleCollision(ball *ball, paddle *paddle) {
+func (ball *ball) handleCollision(paddle *paddle) {
 	// If ball and paddle are coming in the same direction, return.
 	// This prevents of multiple collisions when the paddle is coming
 	// the same way that the ball is after collision.
@@ -128,7 +126,7 @@ func handleCollision(ball *ball, paddle *paddle) {
 	ball.velocity.Y = ball.velocity.Y - paddle.velocity.Y/1.25
 }
 
-func colliding(ball *ball, paddle *paddle) bool {
+func (ball *ball) colliding(paddle *paddle) bool {
 	if paddle == nil {
 		return false
 	}
@@ -142,7 +140,7 @@ func colliding(ball *ball, paddle *paddle) bool {
 	return !(bb <= tp || tb >= bp || rb <= lp || lb >= rp)
 }
 
-func moveBall(ball *ball, leftPaddle, rightPaddle *paddle) {
+func (ball *ball) move(leftPaddle, rightPaddle *paddle) {
 	// if(stickToPaddle()) return
 	// Move
 	ball.X += int32(ball.velocity.X)
@@ -157,18 +155,18 @@ func moveBall(ball *ball, leftPaddle, rightPaddle *paddle) {
 	// }
 
 	// Check for collisions
-	if colliding(ball, leftPaddle) {
-		handleCollision(ball, leftPaddle)
+	if ball.colliding(leftPaddle) {
+		ball.handleCollision(leftPaddle)
 		return
 	}
 
-	if colliding(ball, rightPaddle) {
-		handleCollision(ball, rightPaddle)
+	if ball.colliding(rightPaddle) {
+		ball.handleCollision(rightPaddle)
 		return
 	}
 }
 
-func renderBall(ball *ball, renderer *sdl.Renderer) {
+func (ball *ball) render(renderer *sdl.Renderer) {
 	radius := ballWidth / 2
 	renderer.SetDrawColor(0xEE, 0xE0, 0x93, 0xFF)
 
@@ -187,12 +185,11 @@ func renderBall(ball *ball, renderer *sdl.Renderer) {
 	}
 }
 
-func movePaddle(paddle *paddle, tableRect *sdl.Rect) {
+func (paddle *paddle) move(tableRect *sdl.Rect) {
 	paddle.X += int32(paddle.X)
 	paddle.collider.X = paddle.X
 
 	mid := (tableRect.X + tableRect.W) / 2
-
 	inMiddle := paddle.X < (mid-paddleWidth-ballWidth) || paddle.X > (mid+ballWidth)
 
 	if (paddle.X < tableRect.X) || !inMiddle || paddle.X+paddleWidth > tableRect.X+tableRect.W {
@@ -209,7 +206,7 @@ func movePaddle(paddle *paddle, tableRect *sdl.Rect) {
 	}
 }
 
-func renderPaddle(paddle *paddle, renderer *sdl.Renderer) {
+func (paddle *paddle) render(renderer *sdl.Renderer) {
 	a := int32(4)
 	r1 := sdl.Rect{
 		X: paddle.collider.X,
@@ -243,14 +240,14 @@ func render(ball *ball, leftPaddle, rightPaddle *paddle, renderer *sdl.Renderer)
 	renderer.SetDrawColor(0x10, 0x30, 0x60, 0xFF)
 	renderer.Clear()
 
-	renderPaddle(leftPaddle, renderer)
-	renderPaddle(rightPaddle, renderer)
-	renderBall(ball, renderer)
+	leftPaddle.render(renderer)
+	rightPaddle.render(renderer)
+	ball.render(renderer)
 
 	renderer.Present()
 }
 
-func renderTexture(texture *texture, x, y int32, clip *sdl.Rect, angle float64, center *sdl.Point, flip sdl.RendererFlip) {
+func (texture *texture) renderTexture(x, y int32, clip *sdl.Rect, angle float64, center *sdl.Point, flip sdl.RendererFlip) {
 	renderQuad := sdl.Rect{
 		X: x,
 		Y: y,
@@ -264,7 +261,7 @@ func renderTexture(texture *texture, x, y int32, clip *sdl.Rect, angle float64, 
 	texture.renderer.CopyEx(texture.texture, clip, &renderQuad, angle, center, flip)
 }
 
-func freeTexture(texture *texture) {
+func (texture *texture) free() {
 	if texture != nil {
 		texture.texture.Destroy()
 		texture.texture = nil
@@ -309,5 +306,59 @@ func main() {
 		fmt.Println("Failed to initialize!")
 	}
 
+	// tableRect := sdl.Rect{
+	// 	X: globals.TableMarginLeft,
+	// 	Y: globals.TableMarginTop,
+	// 	W: globals.TableWidth,
+	// 	H: globals.TableHeight}
+
+	leftPaddle := paddle{}
+	leftPaddle.X = paddleWidth
+	leftPaddle.Y = globals.ScreenHeight/2 - paddleHeight/2
+	leftPaddle.collider = sdl.Rect{
+		X: leftPaddle.X,
+		Y: leftPaddle.Y,
+		W: paddleWidth,
+		H: paddleHeight}
+	leftPaddle.points = 0
+	leftPaddle.serveDirection = 1
+	leftPaddle.stickingBall = nil
+	leftPaddle.velocity = velocity{0, 0}
+
+	rightPaddle := paddle{}
+	rightPaddle.X = globals.ScreenWidth - 2*paddleWidth
+	rightPaddle.Y = globals.ScreenHeight/2 - paddleHeight/2
+	rightPaddle.collider = sdl.Rect{
+		X: rightPaddle.X,
+		Y: rightPaddle.Y,
+		W: paddleWidth,
+		H: paddleHeight}
+	rightPaddle.points = 0
+	rightPaddle.serveDirection = -1
+	rightPaddle.stickingBall = nil
+	rightPaddle.velocity = velocity{0, 0}
+
+	ball := ball{}
+	ball.X = globals.ScreenWidth/2 - ballWidth/2
+	ball.Y = globals.ScreenHeight/2 - ballHeight/2
+	ball.collider = sdl.Rect{
+		X: ball.X,
+		Y: ball.Y,
+		W: ballWidth,
+		H: ballHeight}
+	ball.stickingPaddle = nil
+	ball.velocity = velocity{0, 0}
+
 	fmt.Println("Initialized sucessfully!")
+
+	for {
+		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
+			switch event.(type) {
+			case *sdl.QuitEvent:
+				return
+			}
+		}
+
+		render(&ball, &leftPaddle, &rightPaddle, gRenderer)
+	}
 }
