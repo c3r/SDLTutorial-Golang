@@ -179,7 +179,7 @@ func (ball *ball) render(renderer *sdl.Renderer) {
 			dx := radius - w
 			dy := radius - h
 			if (dx*dx)+(dy*dy) <= (radius * radius) {
-				renderer.DrawPoint(center.X, center.Y)
+				renderer.DrawPoint(center.X+int32(dx), center.Y+int32(dy))
 			}
 		}
 	}
