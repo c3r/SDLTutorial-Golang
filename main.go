@@ -310,15 +310,17 @@ func loadTextureFromFile(texture *texture, path string) bool {
 }
 
 func main() {
+
 	if !initGame() {
 		fmt.Println("Failed to initialize!")
 	}
 
 	tableRect := sdl.Rect{
-		X: globals.TableMarginLeft,
-		Y: globals.TableMarginTop,
-		W: globals.TableWidth,
-		H: globals.TableHeight}
+			X: globals.TableMarginLeft,
+			Y: globals.TableMarginTop,
+			W: globals.TableWidth,
+			H: globals.TableHeight}
+	
 
 	leftPaddle := paddle{}
 	leftPaddle.X = paddleWidth
