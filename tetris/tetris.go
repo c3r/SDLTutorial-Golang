@@ -1,8 +1,6 @@
 package main
 
 import (
-	"math/rand"
-
 	"github.com/veandco/go-sdl2/sdl"
 )
 
@@ -10,66 +8,119 @@ type color struct {
 	r, g, b, a uint8
 }
 
-func drawPoint(x, y int32, color *color, renderer *sdl.Renderer) {
+type renderingCtx struct {
+	fps            uint32
+	lastUpdateTime uint32
+	currTime       uint32
+}
+
+const (
+	gSideLen          = 10
+	gTetrominoRectNum = 4
+	gFPS              = 10
+	gFastFPS          = 60
+	gWindowWidth      = 1024
+	gWindowHeight     = 768
+)
+
+func drawTetromino(tetromino [16]int, x, y int, position int, renderer *sdl.Renderer) {
+	yi := y
+	xi := x
+	for i := 0; i < gTetrominoRectNum; i++ {
+		yi = y + ((tetromino[i+(position*4)] / gTetrominoRectNum) * gSideLen)
+		xi = x + ((tetromino[i+(position*4)] % gTetrominoRectNum) * gSideLen)
+		drawSquare(xi, yi, gSideLen, &color{255, 255, 255, 255}, renderer)
+	}
+}
+
+func drawPoint(x, y int, color *color, renderer *sdl.Renderer) {
 	renderer.SetDrawColor(color.r, color.g, color.a, 0xFF)
-	renderer.DrawPoint(x, y)
+	renderer.DrawPoint(int32(x), int32(y))
+}
+
+func drawSquare(x, y int, a int, color *color, renderer *sdl.Renderer) {
+	drawRect(x, y, a, a, color, renderer)
+}
+
+func drawRect(x, y int, w, h int, color *color, renderer *sdl.Renderer) {
+	xEnd := x + w
+	yEnd := y + h
+	for xi := x; xi < xEnd; xi++ {
+		for yi := y; yi < yEnd; yi++ {
+			drawPoint(xi, yi, color, renderer)
+		}
+	}
+}
+
+func (ctx *renderingCtx) sleep(keyState []uint8) {
+	tts := ctx.timeToSleep(keyState)
+	if tts > 0 {
+		sdl.Delay(uint32(tts))
+	}
+	ctx.lastUpdateTime = ctx.currTime
+}
+
+func (ctx *renderingCtx) timeToSleep(keyState []uint8) int32 {
+	ctx.currTime = sdl.GetTicks()
+	if keyState[sdl.SCANCODE_DOWN] != 0 {
+		ctx.fps = gFastFPS
+	} else {
+		ctx.fps = gFPS
+	}
+	return int32(uint32(1000/ctx.fps) - (ctx.currTime - ctx.lastUpdateTime))
 }
 
 func main() {
 
+	t1 := [16]int{1, 5, 8, 9, 0, 4, 5, 6, 1, 2, 5, 9, 0, 1, 2, 6}
+	t2 := [16]int{1, 5, 9, 10, 0, 1, 2, 4, 0, 1, 5, 9, 2, 4, 5, 6}
+	t3 := [16]int{0, 4, 8, 12, 0, 1, 2, 3, 0, 4, 8, 12, 0, 1, 2, 3}
+	t4 := [16]int{1, 4, 5, 6, 1, 5, 6, 9, 0, 1, 2, 5, 1, 4, 5, 9}
+	t5 := [16]int{0, 1, 4, 5, 0, 1, 4, 5, 0, 1, 4, 5, 0, 1, 4, 5}
+
 	sdl.Init(sdl.INIT_VIDEO)
 
-	window, renderer, err := sdl.CreateWindowAndRenderer(1024, 768, 0)
+	window, renderer, err := sdl.CreateWindowAndRenderer(gWindowWidth, gWindowHeight, 0)
 	if err != nil {
 		return
 	}
 
-	ticksPerSecond := 30
-	tickInterval := uint32(1000 / ticksPerSecond)
-	lastUpdateTime := uint32(0)
-
-	initX := 0
-	initY := 0
+	keyState := sdl.GetKeyboardState()
+	renderingCtx := renderingCtx{uint32(60), uint32(0), uint32(0)}
+	position := 0
+	ypositionOffset := 0
 
 	for {
 		renderer.SetDrawColor(0, 0, 0, 0)
 		renderer.Clear()
-		event := sdl.PollEvent()
-		if event != nil && event.GetType() == sdl.QUIT {
-			break
-		}
 
-		currentTime := sdl.GetTicks()
-		dt := currentTime - lastUpdateTime
-		timeToSleep := int32(tickInterval - dt)
+		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 
-		if timeToSleep > 0 {
-			sdl.Delay(uint32(timeToSleep))
-		}
+			if event.GetType() == sdl.KEYDOWN {
+				position++
+			}
 
-		initX += 1
-		initY += 1
-
-		for x := initX; x < initX+250; x++ {
-			for y := initY; y < initY+100; y++ {
-				r := uint8(rand.Int() % 255)
-				g := uint8(rand.Int() % 255)
-				b := uint8(rand.Int() % 255)
-				drawPoint(int32(x), int32(y), &color{r, g, b, 255}, renderer)
+			switch event.(type) {
+			case *sdl.QuitEvent:
+				return
 			}
 		}
 
+		renderingCtx.sleep(keyState)
+
+		drawTetromino(t1, 100, ypositionOffset, position%4, renderer)
+		drawTetromino(t2, 200, ypositionOffset, position%4, renderer)
+		drawTetromino(t3, 300, ypositionOffset, position%4, renderer)
+		drawTetromino(t4, 400, ypositionOffset, position%4, renderer)
+		drawTetromino(t5, 500, ypositionOffset, position%4, renderer)
+
+		ypositionOffset += gSideLen
+
 		renderer.Present()
-		lastUpdateTime = currentTime
 	}
 
 	renderer.Destroy()
 	window.Destroy()
 	sdl.Quit()
-
-	// SDL_DestroyRenderer(renderer);
-	// SDL_DestroyWindow(window);
-	// SDL_Quit();
-	// return EXIT_SUCCESS;
 
 }
