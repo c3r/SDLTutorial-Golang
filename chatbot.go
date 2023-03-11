@@ -1,10 +1,9 @@
 package main
 
-import "github.com/veandco/go-sdl2/sdl"
-
-type color struct {
-    r, g, b, a uint8
-}
+import (
+    "github.com/veandco/go-sdl2/sdl"
+    "image/color"
+)
 
 const (
     WINDOW_W = 1920
@@ -22,20 +21,22 @@ type state struct {
     visibleRectangles []rectangle
 }
 
-func colors() map[string]color {
-    return map[string]color { "WHITE": { 0xFF, 0xFF, 0xFF, 0xFF }, "BLACK": { 0x00, 0x00, 0x00, 0xFF } }
+func colors() map[string]sdl.Color {
+    return map[string]sdl.Color { "WHITE": { 0xFF, 0xFF, 0xFF, 0xFF }, "BLACK": { 0x00, 0x00, 0x00, 0xFF } }
 }
 
-func palette() map[string]color {
-    return map[string]color { "BACKGROUND": colors()["WHITE"], "RECT_BG": colors()["BLACK"] }
+func palette() map[string]sdl.Color {
+    return map[string]sdl.Color { "BACKGROUND": colors()["WHITE"], "RECT_BG": colors()["BLACK"] }
 }
 
-func drawPoint(x, y int32, color color, renderer *sdl.Renderer) {
-    renderer.SetDrawColor(color.r, color.g, color.b, 0xFF)
+// ---------------------------------------------------------------------------------------------------
+// Draw realtime
+func drawPoint(x, y int32, color sdl.Color, renderer *sdl.Renderer) {
+    renderer.SetDrawColor(color.R, color.G, color.B, color.A)
     renderer.DrawPoint(int32(x), int32(y))
 }
 
-func drawRect(x, y int32, w, h int32, color color, renderer *sdl.Renderer) {
+func drawRect(x, y int32, w, h int32, color sdl.Color, renderer *sdl.Renderer) {
     xEnd := x + w
     yEnd := y + h
     for xi := x; xi < xEnd; xi++ {
@@ -45,12 +46,33 @@ func drawRect(x, y int32, w, h int32, color color, renderer *sdl.Renderer) {
     }
 }
 
-func clearScr(renderer *sdl.Renderer) {
+func clearScr(surface *sdl.Surface) {
     bgColor := palette()["BACKGROUND"]
-    renderer.SetDrawColor(bgColor.r, bgColor.g, bgColor.b, 0xFF)
-    renderer.Clear()
+    mappedColor := sdl.MapRGBA(surface.Format, bgColor.R, bgColor.G, bgColor.B, bgColor.A)
+    surface.FillRect(&sdl.Rect { 0, 0, WINDOW_W, WINDOW_H }, mappedColor)
+
+}
+// ---------------------------------------------------------------------------------------------------
+// Update surface
+func updateSurfacePoint(x, y int32, clr sdl.Color, surface *sdl.Surface) {
+    //new_y := y * surface.Pitch
+    //new_x := x * int32(surface.Format.BytesPerPixel)
+    c := color.RGBA { clr.R, clr.G, clr.B, clr.A }
+    surface.Set(int(x), int(y), c)
 }
 
+func updateSurfaceRect(x, y int32, w, h int32, color sdl.Color, surface *sdl.Surface) {
+    xEnd := x + w
+    yEnd := y + h
+    for xi := x; xi < xEnd; xi++ {
+	for yi := y; yi < yEnd; yi++ {
+	    updateSurfacePoint(xi, yi, color, surface)
+	}
+    }
+}
+// ---------------------------------------------------------------------------------------------------
+
+// Handle mouse events
 func handleMouseMotionEvent(state *state, evt *sdl.Event) {
     x, y, _ := sdl.GetMouseState()
     state.mouseRectangle.x = x
@@ -62,12 +84,17 @@ func handleMouseButtonEvent(state *state, evt *sdl.Event) {
     state.visibleRectangles = append(state.visibleRectangles, rectangle{ x, y })
 }
 
-func render(state *state, renderer *sdl.Renderer) {
+// ---------------------------------------------------------------------------------------------------
+
+func render(state *state, renderer *sdl.Renderer, surface *sdl.Surface) {
     // Draw mouse rectangle
     drawRect(state.mouseRectangle.x, state.mouseRectangle.y, 100, 100, palette()["RECT_BG"], renderer) 
+    // Udpate surface
+    surface.Lock()
     for _, rectangle := range state.visibleRectangles {
-    	drawRect(rectangle.x, rectangle.y, 100, 100, palette()["RECT_BG"], renderer)
+    	updateSurfaceRect(rectangle.x, rectangle.y, 100, 100, palette()["RECT_BG"], surface)
     }
+    surface.Unlock()
     renderer.Present()	
 }
 
@@ -93,22 +120,31 @@ func main() {
     }
     defer sdl.Quit()
 
-    window, renderer, err := sdl.CreateWindowAndRenderer(WINDOW_W, WINDOW_H, 0)
+    window, err := sdl.CreateWindow("test", 100, 100, WINDOW_W, WINDOW_H, sdl.WINDOW_SHOWN)
     if err != nil {
 	panic(err)
     }
+
     defer window.Destroy()
 
+    surface, err := window.GetSurface()
     if err != nil {
 	panic(err)
+    }
+
+    renderer, err := window.GetRenderer()
+    if err != nil {
+    	panic(err)
     }
 
     rect := rectangle { int32(0), int32(0) }
     state := state { true, uint32(0), rect,[]rectangle{}  }
+    clearScr(surface)
     for state.running {
-	clearScr(renderer)
     	update(&state)
-    	render(&state, renderer)
+    	window.UpdateSurface()
+    	render(&state, renderer, surface)
+    	sdl.Delay(20)
     }
 
 }
