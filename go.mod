@@ -1,4 +1,4 @@
-module chatbot
+module diagram
 
 go 1.18
 
